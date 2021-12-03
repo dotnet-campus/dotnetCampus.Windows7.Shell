@@ -1,0 +1,14 @@
+<Project>
+  <Import Project="build\Version.props" />
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <PackageOutputPath>$(MSBuildThisFileDirectory)bin\$(Configuration)</PackageOutputPath>
+    <Company>dotnet campus（.NET 职业技术学院）</Company>
+    <Authors>dotnet-campus</Authors>
+    <RepositoryUrl>https://github.com/dotnet-campus/dotnetCampus.Windows7.Shell</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/dotnet-campus/dotnetCampus.Windows7.Shell</PackageProjectUrl>
+    <Description>WindowChrome of the latest Microsoft.Windows.Shell causes some blinks of the window. But this one is that from .NET Framework 3.5 which has not the newly blinks bugs. Furthermore, this package uses the old source code but supports the latest .NET 5/6.</Description>
+    <RepositoryType>git</RepositoryType>
+    <Copyright>Copyright © 2021 dotnet campus, All Rights Reserved.</Copyright>
+  </PropertyGroup>
+</Project>
