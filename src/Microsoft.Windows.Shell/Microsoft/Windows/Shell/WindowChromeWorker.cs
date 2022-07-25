@@ -204,7 +204,10 @@ namespace Microsoft.Windows.Shell
                 Bottom = 100,
                 Right = 100
             });
-            Point logical = DpiHelper.DevicePixelsToLogical(new Point((double)(windowPlacement.rcNormalPosition.Left - adjustedWindowRect.Left), (double)(windowPlacement.rcNormalPosition.Top - adjustedWindowRect.Top)));
+            DpiScale dpi = VisualTreeHelper.GetDpi(_window);
+
+            Point logical = DpiHelper.DevicePixelsToLogical(new Point((double)(windowPlacement.rcNormalPosition.Left - adjustedWindowRect.Left), (double)(windowPlacement.rcNormalPosition.Top - adjustedWindowRect.Top)),
+                dpi.DpiScaleX, dpi.DpiScaleY);
             this._window.Top = logical.Y;
             this._window.Left = logical.X;
         }
@@ -362,7 +365,10 @@ namespace Microsoft.Windows.Shell
                     Right = 100
                 });
                 Point point = new Point(this._window.Left, this._window.Top);
-                point -= (Vector)DpiHelper.DevicePixelsToLogical(new Point((double)adjustedWindowRect.Left, (double)adjustedWindowRect.Top));
+                DpiScale dpi = VisualTreeHelper.GetDpi(_window);
+
+                point -= (Vector)DpiHelper.DevicePixelsToLogical(new Point((double)adjustedWindowRect.Left, (double)adjustedWindowRect.Top),
+                    dpi.DpiScaleX, dpi.DpiScaleY);
                 return this._window.RestoreBounds.Location != point;
             }
         }
