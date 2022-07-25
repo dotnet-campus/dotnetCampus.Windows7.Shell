@@ -264,10 +264,11 @@ namespace Microsoft.Windows.Shell
                 }
                 if (Utility.IsPresentationFrameworkVersionLessThan4)
                 {
+                    DpiScale dpi = VisualTreeHelper.GetDpi(_window);
                     RECT windowRect = NativeMethods.GetWindowRect(this._hwnd);
                     RECT adjustedWindowRect = this._GetAdjustedWindowRect(windowRect);
-                    Rect logical1 = DpiHelper.DeviceRectToLogical(new Rect((double)windowRect.Left, (double)windowRect.Top, (double)windowRect.Width, (double)windowRect.Height));
-                    Rect logical2 = DpiHelper.DeviceRectToLogical(new Rect((double)adjustedWindowRect.Left, (double)adjustedWindowRect.Top, (double)adjustedWindowRect.Width, (double)adjustedWindowRect.Height));
+                    Rect logical1 = DpiHelper.DeviceRectToLogical(new Rect((double)windowRect.Left, (double)windowRect.Top, (double)windowRect.Width, (double)windowRect.Height), dpi.DpiScaleX, dpi.DpiScaleY);
+                    Rect logical2 = DpiHelper.DeviceRectToLogical(new Rect((double)adjustedWindowRect.Left, (double)adjustedWindowRect.Top, (double)adjustedWindowRect.Width, (double)adjustedWindowRect.Height), dpi.DpiScaleX, dpi.DpiScaleY);
                     if (!Utility.IsFlagSet((int)this._chromeInfo.NonClientFrameEdges, 1))
                     {
                         ref Thickness local = ref thickness1;
