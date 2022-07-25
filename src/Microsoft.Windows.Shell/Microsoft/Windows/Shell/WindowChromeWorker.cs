@@ -431,7 +431,8 @@ namespace Microsoft.Windows.Shell
             }
             if ((uint)this._chromeInfo.NonClientFrameEdges > 0U)
             {
-                Thickness device = DpiHelper.LogicalThicknessToDevice(SystemParameters2.Current.WindowResizeBorderThickness);
+                DpiScale dpi = VisualTreeHelper.GetDpi(_window);
+                Thickness device = DpiHelper.LogicalThicknessToDevice(SystemParameters2.Current.WindowResizeBorderThickness, dpi.DpiScaleX, dpi.DpiScaleY);
                 RECT structure = (RECT)Marshal.PtrToStructure(lParam, typeof(RECT));
                 if (Utility.IsFlagSet((int)this._chromeInfo.NonClientFrameEdges, 2))
                     structure.Top += (int)device.Top;
@@ -835,10 +836,11 @@ namespace Microsoft.Windows.Shell
             else
             {
                 this._hwndSource.CompositionTarget.BackgroundColor = Colors.Transparent;
-                Thickness device1 = DpiHelper.LogicalThicknessToDevice(this._chromeInfo.GlassFrameThickness);
+                DpiScale dpi = VisualTreeHelper.GetDpi(_window);
+                Thickness device1 = DpiHelper.LogicalThicknessToDevice(this._chromeInfo.GlassFrameThickness, dpi.DpiScaleX, dpi.DpiScaleY);
                 if ((uint)this._chromeInfo.NonClientFrameEdges > 0U)
                 {
-                    Thickness device2 = DpiHelper.LogicalThicknessToDevice(SystemParameters2.Current.WindowResizeBorderThickness);
+                    Thickness device2 = DpiHelper.LogicalThicknessToDevice(SystemParameters2.Current.WindowResizeBorderThickness, dpi.DpiScaleX, dpi.DpiScaleY);
                     if (Utility.IsFlagSet((int)this._chromeInfo.NonClientFrameEdges, 2))
                     {
                         device1.Top -= device2.Top;

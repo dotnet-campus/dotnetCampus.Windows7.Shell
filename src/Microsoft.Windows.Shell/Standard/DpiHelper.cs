@@ -78,11 +78,12 @@ namespace Standard
             return new Size(logical.X, logical.Y);
         }
 
-        public static Thickness LogicalThicknessToDevice(Thickness logicalThickness)
+        public static Thickness LogicalThicknessToDevice(Thickness logicalThickness, double dpiScaleX, double dpiScaleY)
         {
-            Point device1 = DpiHelper.LogicalPixelsToDevice(new Point(logicalThickness.Left, logicalThickness.Top));
-            Point device2 = DpiHelper.LogicalPixelsToDevice(new Point(logicalThickness.Right, logicalThickness.Bottom));
-            return new Thickness(device1.X, device1.Y, device2.X, device2.Y);
+            Point topLeft = LogicalPixelsToDevice(new Point(logicalThickness.Left, logicalThickness.Top), dpiScaleX, dpiScaleY);
+            Point bottomRight = LogicalPixelsToDevice(new Point(logicalThickness.Right, logicalThickness.Bottom), dpiScaleX, dpiScaleY);
+
+            return new Thickness(topLeft.X, topLeft.Y, bottomRight.X, bottomRight.Y);
         }
     }
 }
