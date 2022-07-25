@@ -25,6 +25,19 @@ namespace Standard
 
         public static Point LogicalPixelsToDevice(Point logicalPoint) => DpiHelper._transformToDevice.Transform(logicalPoint);
 
+        /// <summary>
+        /// Convert a point in device independent pixels (1/96") to a point in the system coordinates.
+        /// </summary>
+        /// <param name="logicalPoint">A point in the logical coordinate system.</param>
+        /// <returns>Returns the parameter converted to the system's coordinates.</returns>
+        public static Point LogicalPixelsToDevice(Point logicalPoint, double dpiScaleX, double dpiScaleY)
+        {
+            // 和 WPF 不同的是，使用变量，不使用字段，不应该污染字段。没有改全所有的逻辑，只是改 WindowChrome 的
+            var transformToDevice = Matrix.Identity;
+            transformToDevice.Scale(dpiScaleX, dpiScaleY);
+            return transformToDevice.Transform(logicalPoint);
+        }
+
         public static Point DevicePixelsToLogical(Point devicePoint) => DpiHelper._transformToDip.Transform(devicePoint);
 
         public static Point DevicePixelsToLogical(Point devicePoint, double dpiScaleX, double dpiScaleY)

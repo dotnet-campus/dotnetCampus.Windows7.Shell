@@ -751,7 +751,10 @@ namespace Microsoft.Windows.Shell
                 {
                     double num = Math.Min(size.Width, size.Height);
                     CornerRadius cornerRadius = this._chromeInfo.CornerRadius;
-                    Point device = DpiHelper.LogicalPixelsToDevice(new Point(cornerRadius.TopLeft, 0.0));
+
+                    DpiScale dpi = VisualTreeHelper.GetDpi(_window);
+                    Point device = DpiHelper.LogicalPixelsToDevice(new Point(cornerRadius.TopLeft, 0.0),
+                        dpi.DpiScaleX, dpi.DpiScaleY);
                     double radius1 = Math.Min(device.X, num / 2.0);
                     if (WindowChromeWorker._IsUniform(this._chromeInfo.CornerRadius))
                     {
@@ -761,21 +764,24 @@ namespace Microsoft.Windows.Shell
                     {
                         gdiObject = WindowChromeWorker._CreateRoundRectRgn(new Rect(0.0, 0.0, size.Width / 2.0 + radius1, size.Height / 2.0 + radius1), radius1);
                         cornerRadius = this._chromeInfo.CornerRadius;
-                        device = DpiHelper.LogicalPixelsToDevice(new Point(cornerRadius.TopRight, 0.0));
+                        device = DpiHelper.LogicalPixelsToDevice(new Point(cornerRadius.TopRight, 0.0),
+                            dpi.DpiScaleX, dpi.DpiScaleY);
                         double radius2 = Math.Min(device.X, num / 2.0);
                         Rect region1 = new Rect(0.0, 0.0, size.Width / 2.0 + radius2, size.Height / 2.0 + radius2);
                         region1.Offset(size.Width / 2.0 - radius2, 0.0);
                         Assert.AreEqual<double>(region1.Right, size.Width);
                         WindowChromeWorker._CreateAndCombineRoundRectRgn(gdiObject, region1, radius2);
                         cornerRadius = this._chromeInfo.CornerRadius;
-                        device = DpiHelper.LogicalPixelsToDevice(new Point(cornerRadius.BottomLeft, 0.0));
+                        device = DpiHelper.LogicalPixelsToDevice(new Point(cornerRadius.BottomLeft, 0.0),
+                            dpi.DpiScaleX, dpi.DpiScaleY);
                         double radius3 = Math.Min(device.X, num / 2.0);
                         Rect region2 = new Rect(0.0, 0.0, size.Width / 2.0 + radius3, size.Height / 2.0 + radius3);
                         region2.Offset(0.0, size.Height / 2.0 - radius3);
                         Assert.AreEqual<double>(region2.Bottom, size.Height);
                         WindowChromeWorker._CreateAndCombineRoundRectRgn(gdiObject, region2, radius3);
                         cornerRadius = this._chromeInfo.CornerRadius;
-                        device = DpiHelper.LogicalPixelsToDevice(new Point(cornerRadius.BottomRight, 0.0));
+                        device = DpiHelper.LogicalPixelsToDevice(new Point(cornerRadius.BottomRight, 0.0),
+                            dpi.DpiScaleX, dpi.DpiScaleY);
                         double radius4 = Math.Min(device.X, num / 2.0);
                         Rect region3 = new Rect(0.0, 0.0, size.Width / 2.0 + radius4, size.Height / 2.0 + radius4);
                         region3.Offset(size.Width / 2.0 - radius4, size.Height / 2.0 - radius4);
