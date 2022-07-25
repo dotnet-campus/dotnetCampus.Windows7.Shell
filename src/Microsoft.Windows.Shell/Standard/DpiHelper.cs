@@ -29,9 +29,10 @@ namespace Standard
 
         public static Point DevicePixelsToLogical(Point devicePoint, double dpiScaleX, double dpiScaleY)
         {
-            _transformToDip = Matrix.Identity;
-            _transformToDip.Scale(1d / dpiScaleX, 1d / dpiScaleY);
-            return _transformToDip.Transform(devicePoint);
+            // 和 WPF 不同的是，使用变量，不使用字段，不应该污染字段。没有改全所有的逻辑，只是改 WindowChrome 的
+            var transformToDip = Matrix.Identity;
+            transformToDip.Scale(1d / dpiScaleX, 1d / dpiScaleY);
+            return transformToDip.Transform(devicePoint);
         }
 
         [SuppressMessage("Microsoft.Performance", "CA1811:AvoidUncalledPrivateCode")]
