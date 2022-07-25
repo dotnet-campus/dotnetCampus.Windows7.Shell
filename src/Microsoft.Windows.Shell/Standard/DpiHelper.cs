@@ -27,10 +27,25 @@ namespace Standard
 
         public static Point DevicePixelsToLogical(Point devicePoint) => DpiHelper._transformToDip.Transform(devicePoint);
 
+        public static Point DevicePixelsToLogical(Point devicePoint, double dpiScaleX, double dpiScaleY)
+        {
+            _transformToDip = Matrix.Identity;
+            _transformToDip.Scale(1d / dpiScaleX, 1d / dpiScaleY);
+            return _transformToDip.Transform(devicePoint);
+        }
+
         [SuppressMessage("Microsoft.Performance", "CA1811:AvoidUncalledPrivateCode")]
         public static Rect LogicalRectToDevice(Rect logicalRectangle) => new Rect(DpiHelper.LogicalPixelsToDevice(new Point(logicalRectangle.Left, logicalRectangle.Top)), DpiHelper.LogicalPixelsToDevice(new Point(logicalRectangle.Right, logicalRectangle.Bottom)));
 
         public static Rect DeviceRectToLogical(Rect deviceRectangle) => new Rect(DpiHelper.DevicePixelsToLogical(new Point(deviceRectangle.Left, deviceRectangle.Top)), DpiHelper.DevicePixelsToLogical(new Point(deviceRectangle.Right, deviceRectangle.Bottom)));
+
+        public static Rect DeviceRectToLogical(Rect deviceRectangle, double dpiScaleX, double dpiScaleY)
+        {
+            Point topLeft = DevicePixelsToLogical(new Point(deviceRectangle.Left, deviceRectangle.Top), dpiScaleX, dpiScaleY);
+            Point bottomRight = DevicePixelsToLogical(new Point(deviceRectangle.Right, deviceRectangle.Bottom), dpiScaleX, dpiScaleY);
+
+            return new Rect(topLeft, bottomRight);
+        }
 
         [SuppressMessage("Microsoft.Performance", "CA1811:AvoidUncalledPrivateCode")]
         public static Size LogicalSizeToDevice(Size logicalSize)

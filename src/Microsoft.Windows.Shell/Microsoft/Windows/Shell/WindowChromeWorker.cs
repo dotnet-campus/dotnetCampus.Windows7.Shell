@@ -442,35 +442,59 @@ namespace Microsoft.Windows.Shell
 
         private IntPtr _HandleNCHitTest(WM uMsg, IntPtr wParam, IntPtr lParam, out bool handled)
         {
-            Point devicePoint1 = new Point((double)Utility.GET_X_LPARAM(lParam), (double)Utility.GET_Y_LPARAM(lParam));
-            Rect windowRect = this._GetWindowRect();
-            Point devicePoint2 = devicePoint1;
-            devicePoint2.Offset(-windowRect.X, -windowRect.Y);
-            IInputElement inputElement = this._window.InputHitTest(DpiHelper.DevicePixelsToLogical(devicePoint2));
+           DpiScale dpi = VisualTreeHelper.GetDpi(_window);
+
+            // Let the system know if we consider the mouse to be in our effective non-client area.
+            var mousePosScreen = new Point(Utility.GET_X_LPARAM(lParam), Utility.GET_Y_LPARAM(lParam));
+            Rect windowPosition = _GetWindowRect();
+
+            Point mousePosWindow = mousePosScreen;
+            mousePosWindow.Offset(-windowPosition.X, -windowPosition.Y);
+            mousePosWindow = DpiHelper.DevicePixelsToLogical(mousePosWindow, dpi.DpiScaleX, dpi.DpiScaleY);
+
+            // If the app is asking for content to be treated as client then that takes precedence over _everything_, even DWM caption buttons.
+            // This allows apps to set the glass frame to be non-empty, still cover it with WPF content to hide all the glass,
+            // yet still get DWM to draw a drop shadow.
+            IInputElement inputElement = _window.InputHitTest(mousePosWindow);
             if (inputElement != null)
             {
                 if (WindowChrome.GetIsHitTestVisibleInChrome(inputElement))
                 {
                     handled = true;
-                    return new IntPtr(1);
+                    return new IntPtr((int) HT.CLIENT);
                 }
-                ResizeGripDirection resizeGripDirection = WindowChrome.GetResizeGripDirection(inputElement);
-                if ((uint)resizeGripDirection > 0U)
+
+                ResizeGripDirection direction = WindowChrome.GetResizeGripDirection(inputElement);
+                if (direction != ResizeGripDirection.None)
                 {
                     handled = true;
-                    return new IntPtr((int)this._GetHTFromResizeGripDirection(resizeGripDirection));
+                    return new IntPtr((int) _GetHTFromResizeGripDirection(direction));
                 }
             }
-            if (this._chromeInfo.UseAeroCaptionButtons && (Utility.IsOSVistaOrNewer && this._chromeInfo.GlassFrameThickness != new Thickness() && this._isGlassEnabled))
+
+            // It's not opted out, so offer up the hittest to DWM, then to our custom non-client area logic.
+            if (_chromeInfo.UseAeroCaptionButtons)
             {
-                IntPtr plResult;
-                handled = NativeMethods.DwmDefWindowProc(this._hwnd, uMsg, wParam, lParam, out plResult);
-                if (IntPtr.Zero != plResult)
-                    return plResult;
+                IntPtr lRet;
+                if (Utility.IsOSVistaOrNewer && _chromeInfo.GlassFrameThickness != default(Thickness) && _isGlassEnabled)
+                {
+                    // If we're on Vista, give the DWM a chance to handle the message first.
+                    handled = NativeMethods.DwmDefWindowProc(_hwnd, uMsg, wParam, lParam, out lRet);
+
+                    if (IntPtr.Zero != lRet)
+                    {
+                        // If DWM claims to have handled this, then respect their call.
+                        return lRet;
+                    }
+                }
             }
-            HT ht = this._HitTestNca(DpiHelper.DeviceRectToLogical(windowRect), DpiHelper.DevicePixelsToLogical(devicePoint1));
+
+            HT ht = _HitTestNca(
+                DpiHelper.DeviceRectToLogical(windowPosition, dpi.DpiScaleX, dpi.DpiScaleY),
+                DpiHelper.DevicePixelsToLogical(mousePosScreen, dpi.DpiScaleX, dpi.DpiScaleY));
+
             handled = true;
-            return new IntPtr((int)ht);
+            return new IntPtr((int) ht);
         }
 
         private IntPtr _HandleNCRButtonUp(
