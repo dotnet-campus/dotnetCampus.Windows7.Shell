@@ -442,7 +442,7 @@ namespace Microsoft.Windows.Shell
 
         private IntPtr _HandleNCHitTest(WM uMsg, IntPtr wParam, IntPtr lParam, out bool handled)
         {
-           DpiScale dpi = VisualTreeHelper.GetDpi(_window);
+            DpiScale dpi = VisualTreeHelper.GetDpi(_window);
 
             // Let the system know if we consider the mouse to be in our effective non-client area.
             var mousePosScreen = new Point(Utility.GET_X_LPARAM(lParam), Utility.GET_Y_LPARAM(lParam));
