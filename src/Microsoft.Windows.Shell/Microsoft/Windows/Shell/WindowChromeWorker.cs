@@ -204,7 +204,10 @@ namespace Microsoft.Windows.Shell
                 Bottom = 100,
                 Right = 100
             });
-            Point logical = DpiHelper.DevicePixelsToLogical(new Point((double)(windowPlacement.rcNormalPosition.Left - adjustedWindowRect.Left), (double)(windowPlacement.rcNormalPosition.Top - adjustedWindowRect.Top)));
+            DpiScale dpi = VisualTreeHelper.GetDpi(_window);
+
+            Point logical = DpiHelper.DevicePixelsToLogical(new Point((double)(windowPlacement.rcNormalPosition.Left - adjustedWindowRect.Left), (double)(windowPlacement.rcNormalPosition.Top - adjustedWindowRect.Top)),
+                dpi.DpiScaleX, dpi.DpiScaleY);
             this._window.Top = logical.Y;
             this._window.Left = logical.X;
         }
@@ -261,10 +264,11 @@ namespace Microsoft.Windows.Shell
                 }
                 if (Utility.IsPresentationFrameworkVersionLessThan4)
                 {
+                    DpiScale dpi = VisualTreeHelper.GetDpi(_window);
                     RECT windowRect = NativeMethods.GetWindowRect(this._hwnd);
                     RECT adjustedWindowRect = this._GetAdjustedWindowRect(windowRect);
-                    Rect logical1 = DpiHelper.DeviceRectToLogical(new Rect((double)windowRect.Left, (double)windowRect.Top, (double)windowRect.Width, (double)windowRect.Height));
-                    Rect logical2 = DpiHelper.DeviceRectToLogical(new Rect((double)adjustedWindowRect.Left, (double)adjustedWindowRect.Top, (double)adjustedWindowRect.Width, (double)adjustedWindowRect.Height));
+                    Rect logical1 = DpiHelper.DeviceRectToLogical(new Rect((double)windowRect.Left, (double)windowRect.Top, (double)windowRect.Width, (double)windowRect.Height), dpi.DpiScaleX, dpi.DpiScaleY);
+                    Rect logical2 = DpiHelper.DeviceRectToLogical(new Rect((double)adjustedWindowRect.Left, (double)adjustedWindowRect.Top, (double)adjustedWindowRect.Width, (double)adjustedWindowRect.Height), dpi.DpiScaleX, dpi.DpiScaleY);
                     if (!Utility.IsFlagSet((int)this._chromeInfo.NonClientFrameEdges, 1))
                     {
                         ref Thickness local = ref thickness1;
@@ -362,7 +366,10 @@ namespace Microsoft.Windows.Shell
                     Right = 100
                 });
                 Point point = new Point(this._window.Left, this._window.Top);
-                point -= (Vector)DpiHelper.DevicePixelsToLogical(new Point((double)adjustedWindowRect.Left, (double)adjustedWindowRect.Top));
+                DpiScale dpi = VisualTreeHelper.GetDpi(_window);
+
+                point -= (Vector)DpiHelper.DevicePixelsToLogical(new Point((double)adjustedWindowRect.Left, (double)adjustedWindowRect.Top),
+                    dpi.DpiScaleX, dpi.DpiScaleY);
                 return this._window.RestoreBounds.Location != point;
             }
         }
@@ -424,7 +431,8 @@ namespace Microsoft.Windows.Shell
             }
             if ((uint)this._chromeInfo.NonClientFrameEdges > 0U)
             {
-                Thickness device = DpiHelper.LogicalThicknessToDevice(SystemParameters2.Current.WindowResizeBorderThickness);
+                DpiScale dpi = VisualTreeHelper.GetDpi(_window);
+                Thickness device = DpiHelper.LogicalThicknessToDevice(SystemParameters2.Current.WindowResizeBorderThickness, dpi.DpiScaleX, dpi.DpiScaleY);
                 RECT structure = (RECT)Marshal.PtrToStructure(lParam, typeof(RECT));
                 if (Utility.IsFlagSet((int)this._chromeInfo.NonClientFrameEdges, 2))
                     structure.Top += (int)device.Top;
@@ -442,35 +450,59 @@ namespace Microsoft.Windows.Shell
 
         private IntPtr _HandleNCHitTest(WM uMsg, IntPtr wParam, IntPtr lParam, out bool handled)
         {
-            Point devicePoint1 = new Point((double)Utility.GET_X_LPARAM(lParam), (double)Utility.GET_Y_LPARAM(lParam));
-            Rect windowRect = this._GetWindowRect();
-            Point devicePoint2 = devicePoint1;
-            devicePoint2.Offset(-windowRect.X, -windowRect.Y);
-            IInputElement inputElement = this._window.InputHitTest(DpiHelper.DevicePixelsToLogical(devicePoint2));
+            DpiScale dpi = VisualTreeHelper.GetDpi(_window);
+
+            // Let the system know if we consider the mouse to be in our effective non-client area.
+            var mousePosScreen = new Point(Utility.GET_X_LPARAM(lParam), Utility.GET_Y_LPARAM(lParam));
+            Rect windowPosition = _GetWindowRect();
+
+            Point mousePosWindow = mousePosScreen;
+            mousePosWindow.Offset(-windowPosition.X, -windowPosition.Y);
+            mousePosWindow = DpiHelper.DevicePixelsToLogical(mousePosWindow, dpi.DpiScaleX, dpi.DpiScaleY);
+
+            // If the app is asking for content to be treated as client then that takes precedence over _everything_, even DWM caption buttons.
+            // This allows apps to set the glass frame to be non-empty, still cover it with WPF content to hide all the glass,
+            // yet still get DWM to draw a drop shadow.
+            IInputElement inputElement = _window.InputHitTest(mousePosWindow);
             if (inputElement != null)
             {
                 if (WindowChrome.GetIsHitTestVisibleInChrome(inputElement))
                 {
                     handled = true;
-                    return new IntPtr(1);
+                    return new IntPtr((int) HT.CLIENT);
                 }
-                ResizeGripDirection resizeGripDirection = WindowChrome.GetResizeGripDirection(inputElement);
-                if ((uint)resizeGripDirection > 0U)
+
+                ResizeGripDirection direction = WindowChrome.GetResizeGripDirection(inputElement);
+                if (direction != ResizeGripDirection.None)
                 {
                     handled = true;
-                    return new IntPtr((int)this._GetHTFromResizeGripDirection(resizeGripDirection));
+                    return new IntPtr((int) _GetHTFromResizeGripDirection(direction));
                 }
             }
-            if (this._chromeInfo.UseAeroCaptionButtons && (Utility.IsOSVistaOrNewer && this._chromeInfo.GlassFrameThickness != new Thickness() && this._isGlassEnabled))
+
+            // It's not opted out, so offer up the hittest to DWM, then to our custom non-client area logic.
+            if (_chromeInfo.UseAeroCaptionButtons)
             {
-                IntPtr plResult;
-                handled = NativeMethods.DwmDefWindowProc(this._hwnd, uMsg, wParam, lParam, out plResult);
-                if (IntPtr.Zero != plResult)
-                    return plResult;
+                IntPtr lRet;
+                if (Utility.IsOSVistaOrNewer && _chromeInfo.GlassFrameThickness != default(Thickness) && _isGlassEnabled)
+                {
+                    // If we're on Vista, give the DWM a chance to handle the message first.
+                    handled = NativeMethods.DwmDefWindowProc(_hwnd, uMsg, wParam, lParam, out lRet);
+
+                    if (IntPtr.Zero != lRet)
+                    {
+                        // If DWM claims to have handled this, then respect their call.
+                        return lRet;
+                    }
+                }
             }
-            HT ht = this._HitTestNca(DpiHelper.DeviceRectToLogical(windowRect), DpiHelper.DevicePixelsToLogical(devicePoint1));
+
+            HT ht = _HitTestNca(
+                DpiHelper.DeviceRectToLogical(windowPosition, dpi.DpiScaleX, dpi.DpiScaleY),
+                DpiHelper.DevicePixelsToLogical(mousePosScreen, dpi.DpiScaleX, dpi.DpiScaleY));
+
             handled = true;
-            return new IntPtr((int)ht);
+            return new IntPtr((int) ht);
         }
 
         private IntPtr _HandleNCRButtonUp(
@@ -721,7 +753,10 @@ namespace Microsoft.Windows.Shell
                 {
                     double num = Math.Min(size.Width, size.Height);
                     CornerRadius cornerRadius = this._chromeInfo.CornerRadius;
-                    Point device = DpiHelper.LogicalPixelsToDevice(new Point(cornerRadius.TopLeft, 0.0));
+
+                    DpiScale dpi = VisualTreeHelper.GetDpi(_window);
+                    Point device = DpiHelper.LogicalPixelsToDevice(new Point(cornerRadius.TopLeft, 0.0),
+                        dpi.DpiScaleX, dpi.DpiScaleY);
                     double radius1 = Math.Min(device.X, num / 2.0);
                     if (WindowChromeWorker._IsUniform(this._chromeInfo.CornerRadius))
                     {
@@ -731,21 +766,24 @@ namespace Microsoft.Windows.Shell
                     {
                         gdiObject = WindowChromeWorker._CreateRoundRectRgn(new Rect(0.0, 0.0, size.Width / 2.0 + radius1, size.Height / 2.0 + radius1), radius1);
                         cornerRadius = this._chromeInfo.CornerRadius;
-                        device = DpiHelper.LogicalPixelsToDevice(new Point(cornerRadius.TopRight, 0.0));
+                        device = DpiHelper.LogicalPixelsToDevice(new Point(cornerRadius.TopRight, 0.0),
+                            dpi.DpiScaleX, dpi.DpiScaleY);
                         double radius2 = Math.Min(device.X, num / 2.0);
                         Rect region1 = new Rect(0.0, 0.0, size.Width / 2.0 + radius2, size.Height / 2.0 + radius2);
                         region1.Offset(size.Width / 2.0 - radius2, 0.0);
                         Assert.AreEqual<double>(region1.Right, size.Width);
                         WindowChromeWorker._CreateAndCombineRoundRectRgn(gdiObject, region1, radius2);
                         cornerRadius = this._chromeInfo.CornerRadius;
-                        device = DpiHelper.LogicalPixelsToDevice(new Point(cornerRadius.BottomLeft, 0.0));
+                        device = DpiHelper.LogicalPixelsToDevice(new Point(cornerRadius.BottomLeft, 0.0),
+                            dpi.DpiScaleX, dpi.DpiScaleY);
                         double radius3 = Math.Min(device.X, num / 2.0);
                         Rect region2 = new Rect(0.0, 0.0, size.Width / 2.0 + radius3, size.Height / 2.0 + radius3);
                         region2.Offset(0.0, size.Height / 2.0 - radius3);
                         Assert.AreEqual<double>(region2.Bottom, size.Height);
                         WindowChromeWorker._CreateAndCombineRoundRectRgn(gdiObject, region2, radius3);
                         cornerRadius = this._chromeInfo.CornerRadius;
-                        device = DpiHelper.LogicalPixelsToDevice(new Point(cornerRadius.BottomRight, 0.0));
+                        device = DpiHelper.LogicalPixelsToDevice(new Point(cornerRadius.BottomRight, 0.0),
+                            dpi.DpiScaleX, dpi.DpiScaleY);
                         double radius4 = Math.Min(device.X, num / 2.0);
                         Rect region3 = new Rect(0.0, 0.0, size.Width / 2.0 + radius4, size.Height / 2.0 + radius4);
                         region3.Offset(size.Width / 2.0 - radius4, size.Height / 2.0 - radius4);
@@ -798,10 +836,11 @@ namespace Microsoft.Windows.Shell
             else
             {
                 this._hwndSource.CompositionTarget.BackgroundColor = Colors.Transparent;
-                Thickness device1 = DpiHelper.LogicalThicknessToDevice(this._chromeInfo.GlassFrameThickness);
+                DpiScale dpi = VisualTreeHelper.GetDpi(_window);
+                Thickness device1 = DpiHelper.LogicalThicknessToDevice(this._chromeInfo.GlassFrameThickness, dpi.DpiScaleX, dpi.DpiScaleY);
                 if ((uint)this._chromeInfo.NonClientFrameEdges > 0U)
                 {
-                    Thickness device2 = DpiHelper.LogicalThicknessToDevice(SystemParameters2.Current.WindowResizeBorderThickness);
+                    Thickness device2 = DpiHelper.LogicalThicknessToDevice(SystemParameters2.Current.WindowResizeBorderThickness, dpi.DpiScaleX, dpi.DpiScaleY);
                     if (Utility.IsFlagSet((int)this._chromeInfo.NonClientFrameEdges, 2))
                     {
                         device1.Top -= device2.Top;
