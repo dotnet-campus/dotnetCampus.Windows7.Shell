@@ -88,7 +88,7 @@ namespace Microsoft.Windows.Shell
             this._ApplyNewCustomChrome();
         }
 
-        private void _OnChromePropertyChangedThatRequiresRepaint(object sender, EventArgs e) => this._UpdateFrameState(true);
+        private void _OnChromePropertyChangedThatRequiresRepaint(object sender, EventArgs e) => _UpdateFrameState(true);
 
         private static void _OnChromeWorkerChanged(
           DependencyObject d,
@@ -104,48 +104,56 @@ namespace Microsoft.Windows.Shell
 
         private void _SetWindow(Window window)
         {
-            Assert.IsNull<Window>(this._window);
-            Assert.IsNotNull<Window>(window);
-            this._window = window;
-            this._hwnd = new WindowInteropHelper(this._window).Handle;
+            Assert.IsNull(this._window);
+            Assert.IsNotNull(window);
+            _window = window;
+            _hwnd = new WindowInteropHelper(_window).Handle;
             if (Utility.IsPresentationFrameworkVersionLessThan4)
             {
-                Utility.AddDependencyPropertyChangeListener((object)this._window, Control.TemplateProperty, new EventHandler(this._OnWindowPropertyChangedThatRequiresTemplateFixup));
-                Utility.AddDependencyPropertyChangeListener((object)this._window, FrameworkElement.FlowDirectionProperty, new EventHandler(this._OnWindowPropertyChangedThatRequiresTemplateFixup));
+                Utility.AddDependencyPropertyChangeListener(_window, Control.TemplateProperty, new EventHandler(_OnWindowPropertyChangedThatRequiresTemplateFixup));
+                Utility.AddDependencyPropertyChangeListener(_window, FrameworkElement.FlowDirectionProperty, new EventHandler(_OnWindowPropertyChangedThatRequiresTemplateFixup));
             }
-            this._window.Closed += new EventHandler(this._UnsetWindow);
-            if (IntPtr.Zero != this._hwnd)
+            _window.Closed += new EventHandler(_UnsetWindow);
+            _window.DpiChanged += _OnWindowDpiChanged;
+            if (_hwnd != IntPtr.Zero)
             {
-                this._hwndSource = HwndSource.FromHwnd(this._hwnd);
-                Assert.IsNotNull<HwndSource>(this._hwndSource);
-                this._window.ApplyTemplate();
-                if (this._chromeInfo == null)
-                    return;
-                this._ApplyNewCustomChrome();
+                _hwndSource = HwndSource.FromHwnd(_hwnd);
+                Assert.IsNotNull(_hwndSource);
+                _window.ApplyTemplate();
+                if (_chromeInfo != null)
+                {
+                    _ApplyNewCustomChrome();
+                }
             }
             else
-                this._window.SourceInitialized += (EventHandler)((sender, e) =>
-               {
-                   this._hwnd = new WindowInteropHelper(this._window).Handle;
-                   Assert.IsNotDefault<IntPtr>(this._hwnd);
-                   this._hwndSource = HwndSource.FromHwnd(this._hwnd);
-                   Assert.IsNotNull<HwndSource>(this._hwndSource);
-                   if (this._chromeInfo == null)
-                       return;
-                   this._ApplyNewCustomChrome();
-               });
+            {
+                _window.SourceInitialized += ((sender, e) =>
+                {
+                    _hwnd = new WindowInteropHelper(_window).Handle;
+                    Assert.IsNotDefault(_hwnd);
+                    _hwndSource = HwndSource.FromHwnd(_hwnd);
+                    Assert.IsNotNull(_hwndSource);
+                    if (_chromeInfo != null)
+                    {
+                        _ApplyNewCustomChrome();
+                    }
+                });
+            }
         }
 
         private void _UnsetWindow(object sender, EventArgs e)
         {
             if (Utility.IsPresentationFrameworkVersionLessThan4)
             {
-                Utility.RemoveDependencyPropertyChangeListener((object)this._window, Control.TemplateProperty, new EventHandler(this._OnWindowPropertyChangedThatRequiresTemplateFixup));
-                Utility.RemoveDependencyPropertyChangeListener((object)this._window, FrameworkElement.FlowDirectionProperty, new EventHandler(this._OnWindowPropertyChangedThatRequiresTemplateFixup));
+                Utility.RemoveDependencyPropertyChangeListener(_window, Control.TemplateProperty, new EventHandler(_OnWindowPropertyChangedThatRequiresTemplateFixup));
+                Utility.RemoveDependencyPropertyChangeListener(_window, FrameworkElement.FlowDirectionProperty, new EventHandler(_OnWindowPropertyChangedThatRequiresTemplateFixup));
             }
-            if (this._chromeInfo != null)
-                this._chromeInfo.PropertyChangedThatRequiresRepaint -= new EventHandler(this._OnChromePropertyChangedThatRequiresRepaint);
-            this._RestoreStandardChromeState(true);
+            if (_chromeInfo != null)
+            {
+                _chromeInfo.PropertyChangedThatRequiresRepaint -= new EventHandler(this._OnChromePropertyChangedThatRequiresRepaint);
+            }
+            _RestoreStandardChromeState(true);
+            _window.DpiChanged -= _OnWindowDpiChanged;
         }
 
         [SuppressMessage("Microsoft.Design", "CA1011:ConsiderPassingBaseTypesAsParameters")]
@@ -168,6 +176,11 @@ namespace Microsoft.Windows.Shell
             if (this._chromeInfo == null || !(this._hwnd != IntPtr.Zero))
                 return;
             this._window.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, (Delegate)new WindowChromeWorker._Action(this._FixupTemplateIssues));
+        }
+
+        private void _OnWindowDpiChanged(object sender, DpiChangedEventArgs e)
+        {
+            _UpdateFrameState(true);
         }
 
         private void _ApplyNewCustomChrome()
@@ -422,30 +435,56 @@ namespace Microsoft.Windows.Shell
           IntPtr lParam,
           out bool handled)
         {
+            // https://docs.microsoft.com/en-us/windows/win32/winmsg/wm-nccalcsize
+
+            /*
+             typedef struct tagNCCALCSIZE_PARAMS {
+               RECT       rgrc[3];
+               PWINDOWPOS lppos;
+             } NCCALCSIZE_PARAMS, *LPNCCALCSIZE_PARAMS;
+             
+             */
+
+            var result = IntPtr.Zero;
             if (wParam != IntPtr.Zero)
             {
-                handled = true;
+                // If wParam is TRUE, it specifies that the application should indicate which part of the client area contains valid information.
+                // The system copies the valid information to the specified area within the new client area.
+
+                //If wParam is TRUE, lParam points to an NCCALCSIZE_PARAMS structure that contains information
+                //an application can use to calculate the new size and position of the client rectangle.
                 RECT structure = (RECT)Marshal.PtrToStructure(lParam, typeof(RECT));
                 structure.Bottom -= -1;
                 Marshal.StructureToPtr((object)structure, lParam, false);
+
+                result = (IntPtr)0x0700; /* WVR_HREDRAW | WVR_VREDRAW | WVR_VALIDRECTS */
             }
-            if ((uint)this._chromeInfo.NonClientFrameEdges > 0U)
+            else
+            {
+                // If wParam is FALSE, the application does not need to indicate the valid part of the client area.
+                // If wParam is FALSE, lParam points to a RECT structure. On entry, the structure contains the proposed window rectangle for the window.
+                // On exit, the structure should contain the screen coordinates of the corresponding window client area.
+            }
+
+
+            if (_chromeInfo.NonClientFrameEdges != NonClientFrameEdges.None)
             {
                 DpiScale dpi = VisualTreeHelper.GetDpi(_window);
                 Thickness device = DpiHelper.LogicalThicknessToDevice(SystemParameters2.Current.WindowResizeBorderThickness, dpi.DpiScaleX, dpi.DpiScaleY);
-                RECT structure = (RECT)Marshal.PtrToStructure(lParam, typeof(RECT));
-                if (Utility.IsFlagSet((int)this._chromeInfo.NonClientFrameEdges, 2))
-                    structure.Top += (int)device.Top;
-                if (Utility.IsFlagSet((int)this._chromeInfo.NonClientFrameEdges, 1))
-                    structure.Left += (int)device.Left;
-                if (Utility.IsFlagSet((int)this._chromeInfo.NonClientFrameEdges, 8))
-                    structure.Bottom -= (int)device.Bottom;
-                if (Utility.IsFlagSet((int)this._chromeInfo.NonClientFrameEdges, 4))
-                    structure.Right -= (int)device.Right;
-                Marshal.StructureToPtr((object)structure, lParam, false);
+                RECT clientArea = (RECT)Marshal.PtrToStructure(lParam, typeof(RECT));
+                if (Utility.IsFlagSet((int)_chromeInfo.NonClientFrameEdges, (int)NonClientFrameEdges.Top))
+                    clientArea.Top += (int)device.Top;
+                if (Utility.IsFlagSet((int)_chromeInfo.NonClientFrameEdges, (int)NonClientFrameEdges.Left))
+                    clientArea.Left += (int)device.Left;
+                if (Utility.IsFlagSet((int)_chromeInfo.NonClientFrameEdges, (int)NonClientFrameEdges.Bottom))
+                    clientArea.Bottom -= (int)device.Bottom;
+                if (Utility.IsFlagSet((int)_chromeInfo.NonClientFrameEdges, (int)NonClientFrameEdges.Right))
+                    clientArea.Right -= (int)device.Right;
+                Marshal.StructureToPtr((object)clientArea, lParam, false);
             }
             handled = true;
-            return new IntPtr(1792);
+
+            return result;
         }
 
         private IntPtr _HandleNCHitTest(WM uMsg, IntPtr wParam, IntPtr lParam, out bool handled)
@@ -469,14 +508,14 @@ namespace Microsoft.Windows.Shell
                 if (WindowChrome.GetIsHitTestVisibleInChrome(inputElement))
                 {
                     handled = true;
-                    return new IntPtr((int) HT.CLIENT);
+                    return new IntPtr((int)HT.CLIENT);
                 }
 
                 ResizeGripDirection direction = WindowChrome.GetResizeGripDirection(inputElement);
                 if (direction != ResizeGripDirection.None)
                 {
                     handled = true;
-                    return new IntPtr((int) _GetHTFromResizeGripDirection(direction));
+                    return new IntPtr((int)_GetHTFromResizeGripDirection(direction));
                 }
             }
 
@@ -502,7 +541,7 @@ namespace Microsoft.Windows.Shell
                 DpiHelper.DevicePixelsToLogical(mousePosScreen, dpi.DpiScaleX, dpi.DpiScaleY));
 
             handled = true;
-            return new IntPtr((int) ht);
+            return new IntPtr((int)ht);
         }
 
         private IntPtr _HandleNCRButtonUp(
@@ -683,22 +722,29 @@ namespace Microsoft.Windows.Shell
 
         private void _UpdateFrameState(bool force)
         {
-            if (IntPtr.Zero == this._hwnd)
-                return;
-            bool flag = NativeMethods.DwmIsCompositionEnabled();
-            if (!force && flag == this._isGlassEnabled)
-                return;
-            this._isGlassEnabled = flag && this._chromeInfo.GlassFrameThickness != new Thickness();
-            if (!this._isGlassEnabled)
+            if (_hwnd == IntPtr.Zero)
             {
-                this._SetRoundingRegion(new WINDOWPOS?());
+                return;
             }
-            else
+
+            bool frameState = NativeMethods.DwmIsCompositionEnabled();
+
+            if (force || frameState != _isGlassEnabled)
             {
-                this._ClearRoundingRegion();
-                this._ExtendGlassFrame();
+                _isGlassEnabled = frameState && _chromeInfo.GlassFrameThickness != default(Thickness);
+
+                if (!_isGlassEnabled)
+                {
+                    _SetRoundingRegion(null);
+                }
+                else
+                {
+                    _ClearRoundingRegion();
+                    _ExtendGlassFrame();
+                }
+
+                NativeMethods.SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0, _SwpFlags);
             }
-            NativeMethods.SetWindowPos(this._hwnd, IntPtr.Zero, 0, 0, 0, 0, SWP.DRAWFRAME | SWP.NOACTIVATE | SWP.NOMOVE | SWP.NOOWNERZORDER | SWP.NOSIZE | SWP.NOZORDER);
         }
 
         private void _ClearRoundingRegion() => NativeMethods.SetWindowRgn(this._hwnd, IntPtr.Zero, NativeMethods.IsWindowVisible(this._hwnd));
